@@ -1,5 +1,5 @@
 # STAT207projects
-This repository contains (the) 4 projects done for the Winter 2020 STA 207: Statistical methods for Research course at UC Davis. Below is a brief summary of each project. Additional information concerning the scope and aims of each project is contained within the relevant writeup project writeup.
+This repository contains (the) 4 projects done for the Winter 2020 STA 207: Statistical methods for Research course at UC Davis. Below is a brief summary of each project. Additional information concerning the scope and aims of each project is contained within the relevant writeup project writeup. Thanks to Koral Buch, Nanhao Chen, and Min Kim, my project partners for the duration of this course. 
 
 Project 1 concerns analysis of data from the highly studied Tennessee Student-Teacher Achievement Ratio study (Project STAR). The analysis studies the effect of class size on math scores for first graders using a One-Way ANOVA model. The data set can be found in the AER package in R. 
 
