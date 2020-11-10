@@ -1,0 +1,215 @@
+---
+title: "Assessing Class Size Effect on Math Scores for 1st Grade"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    fig caption: yes
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+    toc_float:
+      collapsed: no
+  word_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+***
+
+Team ID: 4
+
+Min Kim
+
+Kenneth Broadhead
+
+Nanhao Chen
+
+Koral Buch
+
+***
+
+# Introduction
+## Background
+
+The Student/Teacher Achievement Ratio (STAR) Project was a four-year study in the late 1980s in Tennessee, which assessed the effect of class size on the students’ academic performance (math and reading scores) of the Stanford Achievement Test (SAT). The longitudinal study randomly assigned students to one of three class types and tracked their achivement from kindergarden through third grade. Additionally, teachers were randomly assigned to the classes they would teach. The three class types were as follows:
+
+* [Control group] regular class (22 to 25 students per teacher)
+
+* [Treatment group I] small class (13 to 17 students per teacher)
+
+* [Treatment group II] regular-with-aide class (22 to 25 students with a full-time teacher's aide)
+
+The study provides additional information about the students, such as gender and ethnicity, and the teachers, such as a number of years of experience and level of education. The effect of these variables on the test scores can be estimated as well.
+
+## Objective
+In this project, we analyze the data from Project STAR, focusing on first grade math scores. The primary question of interest is whether class type affects the students’ math scores in the SAT. In this project, we estimate the change in the math score for each treatment group given the control group. We do not examine class size effects on subset of students (male/female, or black/white etc). However, such analyses are possible and should be undertaken for the potential impact on policy changes.
+
+## Statistical Analysis
+To answer our main question of interest, we fit a one-way ANOVA model and obtained basic properties. The dependent variable is the math test scores for first grade, and the independent variable is the class type. We formally investigate whether class sizes are associated with math performance. Furthermore, we investigate relative effect differences for each class size on math scores using Bonferroni's correction for multiple comparisons.
+
+# Results
+## Missing Values
+The data contain 11,598 observations. We are interested only in those that have data for the relevant treatment, i.e. have values for first grade class sizes. We therefore trim the data set accordingly. Of the remaining 6829, there are 229 observations that do not have a first grade math score (**math1**). Due to the large number of observations, we simply delete these observations. We first investigate whether or not these observations can be considered as random, or if there is some problematic bias that might be introduced by deleting them. Since the number of missing values is relatively small compared with the remaining data, it is unlikely that deleting them would induce any noticable bias in our analyses. However, as a matter of formatlity, we investigate whether or not these missing values may be considered as random (not dependent on any variables we consider), or stem from some systematic reasons potentially inducing bias if more data points are missing. We investigate variables pertaining to gender, ethnicity, school location, whether or not the students qualified for free lunch (a possible economic indicator). All variables had a similar distribution between the dataset with the missing math scores, and the dataset with math scores, with the exception with the variable indicating whether the student qualifying for free lunch. A slightly higher proportion of students missing a math score qualify for free lunch then one might expect if the missing values were random. However, this difference is not extreme, and may be attributed to randomness after all, owing to the difference between the number of observations in each set. The data analysis is thus conducted on the remaining 6600 observations.
+
+```{r message=FALSE, include=FALSE}
+library(AER)
+library(kableExtra)
+library(tidyverse)
+data("STAR")
+```
+
+```{r}
+STAR$star1 <- as.factor(STAR$star1)
+# create a subset for 1st grade with removing all the NA data in star1 and math1
+subset1 <- subset(STAR, (!is.na(STAR$star1))&(!is.na(STAR$math1)))
+# create a subset for 1st grade with removing all the NA data in star1 and keep NA in math1
+subset1_NA <- subset(STAR, (!is.na(STAR$star1))&(is.na(STAR$math1)))
+```
+
+## Descriptive Analysis
+Figures 1 to 3 and Table 1 show summary statistics of 1st grade math scores and 1st grade class types. The distributions of each math score population seems to be approximately normal. According to the boxplot in Figure 3, the **math1** scores of different class types suggest that class types has an effect on the average of the mathematics scores, and the variations of each population appear to be similar. Since teachers were randomly assigned to classes, confounding variables, such as degree types and teaching experiences of the teachers, can be ignored in this analysis. Finally, a cell means one-way ANOVA model seems appropriate for the investigation of the effects of class type on mathematics scores.
+
+```{r fig.cap="Figure 1: Histograms of 1st grade math scores by different class types."}
+par(mfrow=c(2,2), pty="s", xpd = NA)
+hist(subset1$math1[subset1$star1=='regular'], main='Control Group (Regular)', xlab='1st grade math score')
+hist(subset1$math1[subset1$star1=='small'], main='Treatment Group I (Small)', xlab='1st grade math score')
+hist(subset1$math1[subset1$star1=='regular+aide'], main='Treatment Group II (Regular+Aide)', xlab='1st grade math score')
+```
+
+```{r fig.cap = "Figure 2. Pie charts of the class types, gender, eligibility for free lunch, and school type."}
+# par(mfrow=c(2,2), mar = c(4,3.5,1,1.5), mgp=c(1.5,0.5,0), cex = 0.8, pty="s")
+par(mfrow=c(4,2), mar = c(3,1,0.7,0), mgp=c(0.5,1,0), cex = 0.8, pty="s") 
+pie(table(STAR$star1), xlab='1st Grades with NAs')
+title("Class Type")
+pie(table(subset1$star1), xlab='1st Grade without NAs')
+pie(table(STAR$gender), xlab='1st Grades with NAs')
+title("Gender")
+pie(table(subset1$gender), xlab='1st Grade without NAs')
+pie(table(STAR$lunch1), xlab='1st Grades with NAs')
+title("Eligibility for Free Lunch")
+pie(table(subset1$lunch1), xlab='1st Grade without NAs')
+pie(table(STAR$school1), xlab='1st Grades with NAs')
+title("School Type")
+pie(table(subset1$school1), xlab='1st Grade without NAs')
+```
+
+```{r fig.cap = "Figure 3. Box plot of the distribution of 1st grade math scores by different class type."}
+par(mfrow=c(1,1))
+boxplot(subset1$math1~subset1$star1, main='The distribution of 1st grade math scores by different class type ',xlab='Class Type', ylab='Math Scores',col=(c('red','blue','green')))
+```
+
+Table 1. The summary statistics of the 1st grade math scores by class types.
+```{r}
+subset1 %>% group_by("Class Type" = star1) %>% summarise(Count = n(),
+                                                         "Min." = min(math1),
+                                          "1st Qu." = quantile(math1, 0.25),
+                                          Mean = mean(math1),
+                                          Median = median(math1),
+                                          "3rd Qu." = quantile(math1, 0.25),
+                                          "Max." = max(math1)) %>%
+  kable() %>%
+  kable_styling(full_width = F)
+```
+
+
+## Inferential Analyses and Model Diagnoses
+Here is the one-way ANOVA model we employed for the analysis:
+$Y_{ij} = \mu_{i} + \varepsilon_{ij},$      $j=1,...,n_{i};i=1,...,r$
+
+where:
+
+  *$Y_{ij}$* is the value of the response variabl in the *j*th observation for the *i*th Class Type;
+
+  *$\mu_{i}$* is the means of the *i*th Class Type;
+
+  *$\varepsilon_{ij}$*'s are random errors, normally distributed with cosntant variance;
+  
+  *$n_{i}$* is the number of observations for the *i*th Class Type and *r* is the numbers of the Class Types.
+
+Based on the one-way ANOVA results (Table 2), the mean square treatment (MSTR) is 97538 and the mean square error (MSE) is 1829. The fitted values for each treatment are 525.2744 for regular class size, 538.6777 for small class size, and 529.6251 for regular class size with aide. The F-test statistic value is 53.33 and the corresponding P-value is close to 0, indicating there is a significant difference between means of 1st grade math scores in different class sizes. Therefore, we conclude that there is a significant relationship between class sizes and 1st grade students' math scores.
+The residual plot in Figure 4 shows that the resdiuals of different class types are dispersed equally around zero, which indicates the equal variance of the residuals at different factor levels. To quantitatively describe the constancy of the variance at different factor level, the Levene's test is applied and the results are listed in Table 3. Accordingly, the p-value of Levene's test is slightly larger than 0.05 (0.0517), and therefore we conclude the residual variances are not significant different between factor levels. At the same time, the histograms of the residuals in the different class types in Figure 5 support the approximate normality of the residuals at different factor levels. The residual Q-Q plot shows that the residuals deviate only slightly from normality; however, the F-test used above is robust against slight deviation from normality. Thus, the figures and discussion above demonstrate the appropriateness of the one-way ANOVA model.
+
+
+Table 2. The summary of the one-way ANOVA.
+```{r}
+fm1.anova = aov(math1 ~ star1, data = subset1)
+summary(fm1.anova)
+```
+
+Table 3. The summary of the Levene's test for the constancy of the variance.
+```{r}
+subset1$res.abs = abs(fm1.anova$residuals)
+summary(aov(res.abs~star1, data=subset1))
+```
+
+```{r fig.cap = "Figure 4. Residuals vs Fitted and Normal Q-Q plots."}
+par(mfrow=c(1,2), pty="s")
+plot(fm1.anova, which=1)
+plot(fm1.anova, which=2)
+```
+
+```{r fig.cap="Figure 5: Histograms of residuals of 1st grade math scores by different class types."}
+par(mfrow=c(2,2), pty="s", xpd = NA)
+hist(fm1.anova$residuals[subset1$star1=='regular'], main='Control Group (Regular)', xlab='Residual')
+hist(subset1$math1[subset1$star1=='small'], main='Treatment Group I (Small)', xlab='Residual')
+hist(subset1$math1[subset1$star1=='regular+aide'], main='Treatment Group II (Regular+Aide)', xlab='Residual')
+```
+
+In order to perform a comparison of the means of the math scores in different class type, Three different cutoff-procedures are considered, namely Bonferroni, Tukey, and Scheffe. Since we are only interested in three pairwise comparisons between each of the three different class sizes, we only consider the Bonferroni's procedure. Though applicable, Tukey's procedure gives wider confidence intervals than Bonferroni's procedure, we therefore only use Bonferroni's procedure. Here the 99% confidence intervals of the mean comparisons between regular class type and small class type,  regular and regular with aide class types, and small and regular with aide class types are listed in Table 4. We note that none of the intervals contain 0, and thus, indicating a significant difference between 1st grade mean math scores for each factor level.
+
+```{r}
+alpha = 0.01
+m = 3 # number of pairwise differences
+B.stat = qt(1-alpha/(2*m), fm1.anova$df.residual)
+T.stat = qtukey(1-alpha, length(fm1.anova$coefficients), fm1.anova$df.residual)
+S.stat = sqrt(length(fm1.anova$coefficients)-1)*qf(1-alpha,length(fm1.anova$coefficients)-1, fm1.anova$df.residual)
+```
+
+Table 4. The 99% Bonferroni confidence interval of mean comparisons
+```{r}
+fm1 <- lm(math1 ~ star1, data = subset1)
+u1 <- fm1.anova$coefficients[1]
+u2 <- fm1.anova$coefficients[1] + fm1.anova$coefficients[2]
+u3 <- fm1.anova$coefficients[1] + fm1.anova$coefficients[3]
+
+n1 = length(subset1$math1[subset1$star1=='regular'])
+n2 = length(subset1$math1[subset1$star1=='small'])
+n3 = length(subset1$math1[subset1$star1=='regular+aide'])
+
+sd1 = summary(fm1.anova)$sig*sqrt(1/n1)
+sd2 = summary(fm1.anova)$sig*sqrt(1/n2)
+sd3 = summary(fm1.anova)$sig*sqrt(1/n3)
+
+D12 = fm1.anova$coefficients[2]
+sd12 = summary(fm1)$sig*sqrt(1/n1 + 1/n2)
+
+D13 = fm1.anova$coefficients[3]
+sd13 = summary(fm1)$sig*sqrt(1/n1 + 1/n3)
+
+D23 = fm1.anova$coefficients[2] - fm1.anova$coefficients[3]
+sd23 = summary(fm1)$sig*sqrt(1/n2 + 1/n3)
+
+# Bonferroni CI
+BCI=matrix(0,3,2)
+BCI[1,] = c(D12 - B.stat*sd12, D12 + B.stat*sd12) # 99% Bonferroni Correction CI of diff between regular and small
+BCI[2,] = c(D13 - B.stat*sd13, D13 + B.stat*sd13) # 99% Bonferroni Correction CI of diff between regular and aide
+BCI[3,] = c(D23 - B.stat*sd23, D23 + B.stat*sd23)
+rownames(BCI) = c("Regular vs Small", "Regular vs Aide", "Small vs Aide")
+colnames(BCI) = c("Lower", "Upper")
+
+BCI %>%
+  kable() %>%
+  kable_styling(full_width = F)
+```
+
+# Conclusion
+In conclusion, we find a significant difference in 1st grade students' mathematics performance on the SAT between class size, with students in smaller classes outperforming students in larger classes on average. Furthermore, according to the design of this experiment, the students and teachers are randomly assigned to different levels (class types), thus ensuring that it is the size of the class and not the teachers' ability affecting students' performance. Therefore, some causal inferences can be made. Comparing math scores between 1st grade students in the regular class type and small class type, one can conclude that the smaller class sizes lead to improved mathematics performance. Due to lack of information on the aide in the regular+aide group, we are unable to make any causal inferences.
+
+# Session Information
+```{r}
+sessionInfo()
+```
