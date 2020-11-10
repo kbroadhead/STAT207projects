@@ -7,4 +7,4 @@ Project 2 concerns an extension of project 1. In this setting we use a Two-Way A
 
 Project 3 concerns analysis of traffic fatality data for 48 US states from 1982 to 1988. Again, the data can be found in the AER package in R. Our analysis investigates the associations between several covariates and traffic fatalities, and, in particular, whether any causal link between mandatory jail sentences and traffic fatalities can be asserted.
 
-Project 4 concerns construction of predictive models using data from the MCI Machine Learning Repository. More specifically, we study retail banking market data, and investigate the potential for predicting whether a subject will sign on to a long-term bank deposit given a number of covariates.
+Project 4 concerns construction of predictive models using data from the MCI Machine Learning Repository. More specifically, we study retail banking market data, and investigate the potential for predicting whether a subject will sign on to a long-term bank deposit given a number of covariates. The "Project4_FinalProject" files contain a sightly expanded version of project 4.
