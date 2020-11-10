@@ -1,0 +1,371 @@
+---
+output: 
+  pdf_document:
+    toc: TRUE
+    number_sections: TRUE
+    toc_depth: 3
+    fig_caption: TRUE
+title: "Mandatory Jail Sentences for Drunk Driving and U.S. Traffic Fatalities"
+header-includes: 
+- \usepackage{longtable}
+- \usepackage{float}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.pos = 'H')
+```
+
+```{r message=FALSE, include=FALSE}
+library(AER)
+library(tidyverse)
+library(foreign)
+library(SuppDists)
+library(car)
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+library(ggplot2)
+library(tibble)
+library(plm)
+library(stargazer)
+library(gridExtra)
+library(Matching)
+library(kableExtra)
+```
+
+```{r}
+data(Fatalities)
+
+Fatalities$jail[28] = 'no'
+Fatalities$service[28] = 'no'
+Fatalities$fatal_rate <- Fatalities$fatal / Fatalities$pop * 10000
+
+Fatalities$punish <- with(Fatalities, factor(jail == "yes" | service == "yes", labels = c("no", "yes")))
+
+Fatalities$drinkage = ifelse(Fatalities$state == "al" & Fatalities$year == 1985 |
+                               Fatalities$state == "ct" & Fatalities$year == 1982 |
+                               Fatalities$state == "wi" & Fatalities$year == 1984 |
+                               Fatalities$state == "wv" & Fatalities$year == 1983, 
+                             19, Fatalities$drinkage)
+
+Fatalities$drinkage = ifelse(Fatalities$state == "ct" & Fatalities$year == 1983 |
+                               Fatalities$state == "ga" & Fatalities$year == 1985, 
+                             20, Fatalities$drinkage)
+
+Fatalities$drinkage = ifelse(Fatalities$state == "ct" & Fatalities$year == 1985 |
+                               Fatalities$state == "ga" & Fatalities$year == 1986 |
+                               Fatalities$state == "id" & Fatalities$year == 1987 |
+                               Fatalities$state == "la" & Fatalities$year == 1987 |
+                               Fatalities$state == "me" & Fatalities$year == 1985 |
+                               Fatalities$state == "ma" & Fatalities$year == 1985 |
+                               Fatalities$state == "mn" & Fatalities$year == 1986 |
+                               Fatalities$state == "mt" & Fatalities$year == 1987 |
+                               Fatalities$state == "nh" & Fatalities$year == 1986 |
+                               Fatalities$state == "ri" & Fatalities$year == 1984 |
+                               Fatalities$state == "tn" & Fatalities$year == 1984 |
+                               Fatalities$state == "tx" & Fatalities$year == 1986 |
+                               Fatalities$state == "vt" & Fatalities$year == 1986 |
+                               Fatalities$state == "wv" & Fatalities$year == 1986 |
+                               Fatalities$state == "wi" & Fatalities$year == 1986 |
+                               Fatalities$state == "wy" & Fatalities$year == 1988 |
+                               Fatalities$state == "ny" & Fatalities$year == 1985, 
+                             21, Fatalities$drinkage)
+```
+
+\begin{center}
+\noindent\textcolor{gray}{\rule{16cm}{0.4pt}}
+
+Team ID: 4
+
+Kenneth Broadhead
+
+Koral Buch
+
+Min Kim 
+
+Nanhao Chen 
+\end{center}
+
+\newpage
+
+# Introduction
+
+## Background
+
+In the 1980s, the U.S. saw an increased awareness of the problem of drunk driving, with numerous grassroots movements seeking to raise awareness of the problem. In response to this new social awareness, both federal and state governments sought to control the problem more actively, and reduce the number of alcohol-related traffic fatalities, by passing legislation relying on a more punitive approach to curbing drunk driving. Common regulations included mandatory jail sentences for offenders, community service, and per se blood alcohol concentration (BAC) laws. Not all attempts to curb drunk driving were punitive in nature, however. The federal government passing legislation encouraging states to raise the minimum legal drinking age (MLDA) to 21, and by1988, all states had MLDAs of 21.
+
+Drunk driving is a severe problem and must be curtailed. Whether these more punitive approaches to decreasing drunk driving behavior are effective should be of great interest to policymakers. To jail individuals convicted of a DUI, even for a brief time, costs state governments financially. Requiring mandatory community service costs local governments resources to monitor and ensure the service is done appropriately. If local, or federal governments, can instead rely on alternative, potentially more efficient means of curtailing alcohol-related traffic fatalities (such as increasing taxes on beer or hard liquor), such means should be brought forward and implemented.
+
+
+## Statistical Objective
+
+To investigate the effectiveness of punitive approaches to curtailing traffic fatalities, annual U.S. traffic fatality data for the lower 48 states (excluding Washington DC) was collected for the period 1982 through 1988. To analyze this data, we propose a fixed effects regression model to analyze specifically the effect of mandatory jail sentences on the fatality rate (fatalities per 10,000 people). Since the effects of these variables can be quite sensitive to other covariates [1], we include state-level covariates to control for some potentially relevant economic factors, local regulatory laws, and demographic factors for which data are available. The potential for causal inference and the limitations of this study will be assessed, and suggestions for future action will be put forth for policymakers.
+
+# Statistical Analysis
+
+## Exploratory Analyisis
+
+Here, we briefly illustrate the difficulty in analyzing this data and the need for sophisticated analysis than one might initially expect. Figure 1 displays the fatality rate for states with and without mandatory jail sentences for each year from 1982 to 1988. Counterintuitively, the fatality rate was higher in those states that have mandatory jail sentences for each year. A similar, though no less illustrative trend can be seen in the next plot, which shows the fatality rate for three states: Vermont, Louisiana and Wisconsin. Both Vermont and Louisiana saw drastic changes in MLDA policy, raising it from 18 to 21 in 1986 and 1987 respectively. However, both states saw increases in their fatality rates after just one year after raising the MLDA. In contrast, Wisconsin steadily increased its MLDA. However, it too produced seemingly counterintuitive results, seeing no steady decrease in fatality rate, and no remarkable change in fatality rate between the years 1982 and 1988. With these examples, we hope to have demonstrated the need for more sophisticated analysis. The effects of alcohol policy changes on traffic fatalities are complicated and easily confounded by many variables known or thought to affect both the driving and drinking habits of individuals. We now proceed to a more sophisticated analysis.
+
+```{r}
+agedf = Fatalities %>%
+  mutate(farate = fatal/pop*10000)
+agedf  <- subset(agedf, , select=c(year, state, drinkage, farate))
+
+state_age_ls = levels(droplevels(Fatalities[which(Fatalities$drinkage == 21 & Fatalities$year == 1982),]$state))
+
+agedf <- agedf[ !agedf$state %in% state_age_ls, ] # remove states without change
+
+agedf$state = toupper(agedf$state) # capitalize
+
+age.heatmap <- 
+  ggplot(data = agedf,
+         mapping = aes(x = state, y = year, fill = factor(drinkage))) +
+  geom_tile(colour = "black") + # grid border
+  theme(axis.ticks.y = element_blank(), 
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = +0.2, size = 6)) +
+  xlab(label = "State") +
+  ylab(label = "Year") +
+  scale_fill_brewer(palette = "YlOrRd", direction = -1) +
+  guides(fill=guide_legend("Drink Age"))
+
+plot1821 = 
+  ggplot(subset(agedf, state %in% c("LA", "VT", "WI")),
+       aes(x = year, y = farate, color = state, group = state)) + 
+  geom_point() +
+  geom_line() +
+  xlab(label = "Year") +
+  ylab(label = "Fatality Rate") +
+  labs(color="State") + 
+  scale_x_discrete(breaks=agedf$year[seq(1,length(levels(agedf$year)),by=2)])
+```
+
+```{r}
+natfat<-NULL
+natafat<-NULL
+natpop<-NULL
+
+for(i in 1982:1988){
+natfat[i-1981]<-sum(Fatalities[Fatalities$year==i,]$fatal)
+natafat[i-1981]<-sum(Fatalities[Fatalities$year==i,]$afatal)
+natpop[i-1981]<-sum(Fatalities[Fatalities$year==i,]$pop)
+}
+
+jailfat<-NULL
+njailfat<-NULL
+jailafat<-NULL
+njailafat<-NULL
+
+for(i in 1982:1988){
+jailfat[i-1981]<-sum(Fatalities[Fatalities$jail=="yes"&Fatalities$year==i,]$fatal)
+njailfat[i-1981]<-sum(Fatalities[Fatalities$jail=="no"&Fatalities$year==i,]$fatal)
+jailafat[i-1981]<-sum(Fatalities[Fatalities$jail=="yes"&Fatalities$year==i,]$afatal)
+njailafat[i-1981]<-sum(Fatalities[Fatalities$jail=="no"&Fatalities$year==i,]$afatal)
+}
+
+jail.plot = ggplot(data=NULL, aes(x = 1982:1988)) + 
+  geom_line(aes(y=jailafat/jailfat, color="jail")) +
+  geom_point(aes(y=jailafat/jailfat, color="jail")) +
+  geom_line(aes(y=njailafat/njailfat, color="no jail")) +
+  geom_point(aes(y=njailafat/njailfat, color="no jail")) +
+  xlab(label = "Year") +
+  ylab(label = "Percent Drunk Driving Fatalities") +
+  labs(color="")
+```
+
+```{r fig.height= 2.5, fig.width=7, fig.cap="\\label{fig:Fig1}Fatality rate among state with and without jail sentences, and fatality rate for VT, LA, WI."}
+grid.arrange(jail.plot, plot1821, ncol=2)
+```
+
+## Missing Values
+
+The data set contains only two missing values: data for mandatory jail sentences and community service for California in 1988. However, in our attempt to find information on these missing values, several sources use language suggesting that California may have had mandatory jail sentences, while the data available states that California had no such laws [2, 3, 4]. Attempts to track down state statutes for the times considered have been unsuccessful. To adjust for this, we fit our model twice: one assuming the state of California had no mandatory jail sentences for 1982-1988, and one assuming the state did. However, this problem points to a substantial issue regarding the quality of the data available, a limitation that will be discussed in greater detail in section 3 below.
+
+```{r} 
+# model 0, beertax with time effects
+# model0 <- plm(fatal_rate ~ beertax, data=Fatalities, index=c('year','state'), model='within')
+
+# model 1, beertax, drinkage, with time effects
+model1 <- plm(fatal_rate ~ beertax + as.factor(drinkage), data=Fatalities, index=c('year','state'), model='within')
+
+# model 2, beertax, drinkage with time the state fixed effect
+model2 <- plm(fatal_rate ~ beertax + as.factor(drinkage) + year + state,  index=c('year','state'), model='within', effect='twoways', data=Fatalities)
+
+# model 3, beertax effect with beertax, drinkage, breath, jail+service with time and state effect
+model3 <- plm(fatal_rate ~ beertax + as.factor(drinkage) + year + state + breath + jail + service,  index=c('year','state'), model='within', effect='twoways', data=Fatalities)
+
+# model 4, model 3 + personal income
+model4 <- plm(fatal_rate ~ beertax + as.factor(drinkage) + year + state + breath + jail + service + log(income),  index=c('year','state'), model='within', effect='twoways', data=Fatalities)
+
+# model 5, model 4 + unemployment rate
+model5 <- plm(fatal_rate ~ beertax + as.factor(drinkage) + year + state + breath + jail + service + log(income) + unemp,  index=c('year','state'), model='within', effect='twoways', data=Fatalities)
+
+# model 6, beertax, personal income, and unemployment rate with state, time fixed effect
+model6 <- plm(fatal_rate ~ beertax + year + state + log(income) + unemp,  index=c('year','state'), model='within', effect='twoways', data=Fatalities)
+
+# model7, all without time effect
+model7 <- plm(fatal_rate ~ beertax + as.factor(drinkage) + state + breath + jail + service + log(income) + unemp, data=Fatalities, index=c('state','year'), model='within')
+
+# model8, model 5 + miles, spirit, dry
+model8 <- plm(fatal_rate ~ beertax + as.factor(drinkage) + year + state + breath + jail + service + log(income) + unemp + spirits + dry + miles,  index=c('year','state'), model='within', effect='twoways', data=Fatalities)
+rob_se <- list(sqrt(diag(vcovHC(model1, type = "HC1"))),
+               sqrt(diag(vcovHC(model2, type = "HC1"))),
+               sqrt(diag(vcovHC(model3, type = "HC1"))),
+               sqrt(diag(vcovHC(model4, type = "HC1"))),
+               sqrt(diag(vcovHC(model5, type = "HC1"))),
+               sqrt(diag(vcovHC(model6, type = "HC1"))),
+               sqrt(diag(vcovHC(model7, type = "HC1"))),
+               sqrt(diag(vcovHC(model8, type = "HC1"))))
+```
+
+## Regression Model
+
+This is the fixed effects regression model we employ for our analysis:
+
+$Y_{it} = \alpha_{i} + X_{it}\beta + S_{t} + \varepsilon_{it},$      $i=1,2,...,48;t=1982,...,1988$
+
+where:
+
+  *$Y_{it}$* is the fatality rate (per 10,000 individuals) for state *i* at time *t*;
+
+  
+  *$\alpha_{i}$* are the state-specific intercepts (state fixed effects);
+  
+  *$S_{t}$* is the time fixed effect;
+  
+  *$X_{it}$* is the vector of variables in the model, including the alcohol policy  and economic variables;
+  
+  *$\varepsilon_{it}$* are the error terms. 
+
+We further assume that $\varepsilon_{it}$ are zero mean normal random variables, and large outliers are unlikely (ensuring that ($X_{it}$,$\varepsilon_{it}$) have finite 4th moments). States operate independently of one another; that is, covariants are independent across states.
+
+In addition to an indicator for mandatory jail sentences, our model includes the following covariates in X: beer taxes; alcohol consumption by state; percent population living in dry counties; indicators for MLDA, breath test, and mandatory community service laws; median personal income, and state unemployment rate.
+	Each variable is included because it is either known or thought to influence the drinking or driving behavior of individuals and, therefore, must be controlled to accurately examine the relation between traffic fatalities and mandatory jail sentences [1]. Some states were changing the MLDA mid-year, which was recorded by a non-integer number. We consequently releveled the MLDA so that it may be treated by indicators: if the state changed the law near the beginning of the year, the new MLDA was recorded; if the law changed near the end of the year, the old MLDA was recorded. Finally, the log of personal income was used, as is customary in the economic literature, due to its heavy skew.
+
+## Model Diagnostics and Sensitivity Analysis
+
+Before conducting any further analysis,  model diagnostics are assessed: 
+1.	According to the plot of the residuals versus fitted value, the residuals are centered 0, and there is no clear pattern between the residuals and the fitted value, indicating the residuals have conditional mean zero large outliers. 
+2.	The QQ-plot shows the residuals are somewhat heavy-tailed; however, regression models are relatively robust against departures from normality. Since the departures from normality are not too extreme, we think our model robust enough to retain its validity.
+3.	There are few if any outliers among the covariates included in the above model. With so few outliers, it is very unlikely that the covariate variables would fail to have finite fourth moments. 
+4. Finally, since states do not have sovereignty over one another, a state’s legal policies do not directly affect other state’s policies. This matter becomes more complicated for covariates like the unemployment rate, however, and it is unclear to what degree each state can be considered independent of one another in this regard.
+This limitation will be further discussed below, and for now, we hold that our assumptions are satisfied.
+
+```{r fig.height=4, fig.width=8, fig.cap="\\label{fig:Fig2}The residuals vs fitted values plot and residuals Q-Q plot of the Specification (8).", out.extra=""}
+predict8 <- as.numeric(plm:::predict.plm(model8))
+residual8 <- as.numeric(model8$residuals)
+
+par(mfrow=c(1,2) , oma=c(0,1,0,1), mar=c(4,1,1.5,1), pty="s")
+plot(predict8, residual8, main='Residuals vs Fitted Values', xlab='Fitted Value', ylab='Residuals')
+abline(h=0, col='red', lwd=1, lty=2)
+qqnorm(model8$residuals)
+qqline(model8$residuals)
+```
+
+## Inferential Analysis
+
+To further demonstrate the potential for confounding in this data, we include several models of increasing complexity. The final model is denoted by Model (8). According to the (1) and (2) models of the total vehicle fatality in Table 2 (see Page 7), the state fixed effect is important to the beer tax effect. The beer tax coefficient, which is significant at 0.05 level in both models, changes the sign from positive (0.36) to negative (-0.67) and keeps negative consistently when considering the state fixed effect. This result indicates that high beer tax is associated with low fatality rate. Besides, the state fixed effect makes the MLDA less significant. In Models (3), (4) and (5), when the economic variables and policies variables are considered, neither the punish laws nor the MLDA have significant relationships with the fatality rate at 0.05 level. Instead, the beer tax, the income and the unemployment rate have significant relationships with the fatality rate. This relationship is confirmed by the (6) model, which only considers the economic variables. According to the signs of these three economic variables, the people with jobs and high income have the higher traffic fatality rate than those unemployed or low-income people. The (7) model shows the importance of the time effect. Without the time effect, most of the economic variables, such as beer tax, become less significant to the fatality rate. The Model (8), with all the variables, has the highest adjusted R-square (0.34). Therefore, Model (8) is used for further analysis.
+
+Based on the results above, on one hand, none of the punish laws, breath test or MLDA has significant relationships with fatality rate consistently. On the other hand, the effect of the beer tax is significant on the fatality rate. Increasing the beer tax, probably leading to reducing the alcohol consumption, is strongly associated with reducing the fatality rate. The high income and low unemployment rate are associated with high fatality rate as well, presumably through the high alcohol consumption.
+
+# Causal Inference
+
+We attempt to strengthen our capacity for causal inference by utilize matching based on propensity scores. The assumptions for this procedure are:
+
+The stable unit treatment value assumption (STUVA), which requires that the outcome of one subject is unaffected by the treatment of another; the Unitary Treatment assumption, which requires that there is only one version of the treatment; the Positivity assumption which suggests all subjects have some probability of receiving the treatment; and the inclusion of all significant covariates, which requires all significant confounding covariates are included [5].
+	
+A quick inspection of the distributions of propensity scores between treatment and control in Figure 3 shows that the Positivity assumption appears to be satisfied. Unitary Treatment assumption is satisfied, only if each state has that has a mandatory jail sentence has a similar length for each jail sentence. However, it is unclear from the current data if this is the case. There are many potentially important covariates we do not have data on, causing problems for the assumption requiring inclusion of all significant covariates. Furthermore, some of these potentially relevant covariates have some influence on whether the STUVA is satisfied. For example, if the sentence lengths for mandatory jail time differ drastically between states that have these laws, this could affect not only the Unitary Treatment assumption, but the STUVA as well, for this might influence the both the driving and drinking habits of people near state lines. The existence of dry counties in the U.S. adds further complexity to this problem.
+	
+For the sake of completing the analysis, we proceed with the propensity score analysis despite these assumption violations. Within each year from 1982 to 1988, we match states with that have a mandatory jail sentence with a state that doesn’t have a mandatory jail sentence using propensity scores to ensure that each matched pair is as similar as possible in terms of observed covariates. The differences in fatality rates between matched pairs are then compared using a paired Wilcoxon signed-rank test. For each year, we test at the 0.01 level the null hypothesis: the population mean ranks are the same, against the alternative: the population mean ranks are different. As summarized in table 1 below, we see that the p-value for each test was above 0.01. Thus, we do not reject our null hypothesis for any year. Based on this analysis, we conclude that having a mandatory jail sentence for conviction of a DUI does not reduce traffic fatalities. 
+
+```{r}
+fatmod<-Fatalities
+fatmod[28,15:16]<-c("no", "no")
+##1-jail sentence; 0-no jail sentence
+
+jailcode<-NULL
+for(i in 1:336){
+  if(fatmod$jail[i]=="yes"){
+    jailcode[i]<-1
+  }
+  else{jailcode[i]<-0}
+}
+fatmod$jailc<-jailcode
+```
+
+```{r}
+temp = list(0.5703, 0.2944, 0.01074, 0.5245, 0.7615, 0.3636, 0.3575)
+proscore.df <- data.frame(temp)
+colnames(proscore.df) = 1982:1988
+rownames(proscore.df) = c("P-value")
+
+proscore.df %>%
+  kable(caption = "P-Value for Wilcoxon Signed Rank Test by Year", longtable = T) %>%
+  kable_styling(full_width = F)
+```
+
+```{r message=F, warning=F, fig.cap="\\label{fig:Fig3}The histograms of the propensity scores from 1982 to 1988.",out.extra=""}
+# D<-NULL
+par(mfrow=c(3,3), oma=c(0,1,0,1))#, mar=c(2.5,1,1.5,1), pty="s")
+
+##test at 0.05 level
+for(i in 1982:1988){
+  temp1<-fatmod[fatmod$year==i,]
+  psfit<-glm(jailc~beertax+(drinkage)+service+breath+log(income)+unemp+miles+spirits+dry, data=temp1, family=binomial(link="logit"))
+  pscores<-predict(psfit, type="response")
+  mat<-Match(temp1$fatal, temp1$jailc, pscores)
+  
+  hist(pscores[mat$index.treated],col = "skyblue", border = F, main = i, xlab = "Propensity Score", ylab = "Frequency")
+  hist(pscores[mat$index.control],add=T, col=scales::alpha("red",.5), border=F)
+  # T<-data.frame(jail=temp1[mat$index.treated,]$fatal,nojail=temp1[mat$index.control,]$fatal)
+  # D<-T[,1]-T[,2]
+  # print(wilcox.test(T[,1], T[,2], paired=TRUE))
+}
+legend(y=4, x=1.75, legend = c("Yes Jail", "No Jail"), col = c("skyblue", scales::alpha('red',.5)), lwd = 1, bty = "n", xpd=NA)
+```
+
+# Results and Limitations: Counsel for Policy Makers
+
+The primary results of our analysis suggest that mandatory jail sentences do not reduce traffic fatalities. Additionally, we find significant association between traffic fatalities and economic indicators, such as personal income and the unemployment rate. Of notable interest to policy makers, the tax on beer was found to have a significant negative relation to traffic fatalities. We find that increasing the beer tax by one percent could decrease the fatality rate by approximately 0.32. It also quite reasonable to think this decrease in fatality rate is related specifically to decreases in drunk driving, for this tax is on alcoholic beverages. Importantly, this approach would also be cost effective, generating additional revenue that can be used by state legislators to fund additional research and efforts to further reduce drunk driving fatalities. 
+
+Our results are by no means indisputable, however. There are several limiting complications that arose during our analysis. Firstly, as mentioned above, we have reason to doubt the quality of the data we have access to. The sources cited above suggest that California may have had mandatory jail sentences at times that conflict with the data at hand. This could indicate that the data wasn’t properly collected or recorded. Secondly, we do not have enough relevant data to give reliable estimates for the impact of each variable on the fatality rate. Finally, the time period the data was collected complicates this analysis further. The 1980s were a tumultuous time of rapidly evolving social concern and awareness of drunk driving. This rapid social change is difficult to account for even in sophisticated models, for it is likely to vary in time and across states. 
+
+Our primary suggestion to policy makers is therefore to take action to fund further research on this important issue. New, more recent data should be collected now that social attitudes on drunk driving have solidified. New covariates need to be included to strengthen the case for causal inference. Most importantly, data on the length of mandatory jail sentences for DUI offenders, data on the enforcement of relevant laws within each state, and geographic data on the location of dry counties should be collected, in addition to data for the covariates already known to be important. Finally, since alcoholics will respond to punitive laws differently than non-alcoholics, data on the prevalence of alcoholism in each state should be collected. States with a larger percentage of alcoholics may find that punitive approaches curtailing drunk driving are less effective than allocating recourses to provide those convicted of a DUI with proper treatment.
+
+```{r results='asis'}
+stargazer(model1, model2, model3, model4, 
+          model5, model6, model7, model8,
+          digits = 2,
+          header = FALSE,
+          type = "latex", 
+          se = rob_se,
+          t = NULL,
+          t.auto = FALSE,
+          omit.summary.stat = 'sd',
+          title = "Linear Panel Regression Models of Traffic Fatalities due to Drunk Driving",
+          model.numbers = FALSE,
+          covariate.labels=c('Beer Tax', 'Drink Age=19', 'Drink Age=20', 'Drink Age=21', 'Breath Test', 'Jail', 'Community Service', 'Income', 'Unemployment', 'Spirits consumption', 'Dry State', 'Miles per Driver'),
+          column.labels = c("(1)", "(2)", "(3)", "(4)", "(5)", "(6)", "(7)", "(8)"),
+          omit.stat = c("rsq", "f"),
+          no.space=TRUE,
+          font.size="small",
+          column.sep.width = "2pt",
+          add.lines = list(c('State','no','yes','yes','yes','yes','yes','yes','yes'), c('Time','yes','yes','yes','yes','yes','yes','no','yes')))
+```
+\newpage
+
+# References
+
+1. Ruhm, C.J., 1996. Alcohol Policies and Highway Vehicle Fatalities. Journal of Health Economics 15, 435–454. https://doi.org/10.1016/S0167-6296(96)00490-0
+2. Laurence, M., n.d. The Development of California Drunk-Driving Legislation.
+3. Brief History of California DUI Laws [WWW Document], 2012. URL https://www.dui.com/brief-history-of-california-dui-laws/ (accessed 2.13.20).
+4. Brown, B., n.d. MADD and Traffic Safety: Grassroots Success 6.
+5. Kaplan, D., 2019. Causal Inference for Observational Studies. The Journal of Infectious Diseases 219, 1–2. https://doi.org/10.1093/infdis/jiy392
+
+\newpage
+
+# Session Information
+```{r}
+sessionInfo()
+```
+

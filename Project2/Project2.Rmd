@@ -1,0 +1,394 @@
+---
+output: 
+  pdf_document:
+    toc: TRUE
+    number_sections: TRUE
+    toc_depth: 3
+    fig_caption: TRUE
+title: "Assessing Class Type Effects on First Grade Math Scores"
+header-includes: 
+- \usepackage{longtable}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.pos = 'H')
+```
+
+\begin{center}
+\noindent\textcolor{gray}{\rule{16cm}{0.4pt}}
+
+Team ID: 4
+
+Kenneth Broadhead 
+
+Koral Buch
+
+Min Kim
+
+Nanhao Chen 
+
+\end{center}
+
+\newpage
+
+# Introduction
+## Background
+The Student/Teacher Achievement Ratio (STAR) Project was a four-year study in the late 1980s in Tennessee, which assessed the effect of class size and type on the students’ academic performance (math and reading scores) of the Stanford Achievement Test (SAT). The longitudinal study randomly assigned students to one of three class types and tracked their achievement from kindergarten through third grade. Additionally, teachers were randomly assigned to the classes they would teach. The three class types were as follows: Regular class (22 to 25 students per teacher), small class (13 to 17 students per teacher), regular-with-aide class (22 to 25 students with a full-time teacher's aide). The study provides additional information about the students, such as gender and ethnicity, and the teachers, such as a number of years of experience and level of education. 
+
+## Objective
+In this project, we analyze data from Project STAR, focusing on first graders’ SAT math scores and class type. Our primary goal is to establish whether class type has a significant effect on students’ SAT math scores. This question is analyzed by fitting a two-way ANOVA model with two factors from the dataset: class type and school ID. A secondary aim is to provide a causal interpretation for the results of our analysis. To this end, our analysis employs teachers as the unit of statistical analysis. Finally, we seek to determine whether this analysis plan yields results that conflicts with the results of our previous investigation (Project 1).
+
+## Statistical Reasoning and Analysis
+
+\font\myfont=cmr12 at 12pt
+
+To investigate whether class type has a significant effect on students' mathematics performance, we fit a two-way ANOVA model to our data, blocking by school ID and using class type as the primary factor of interest. Our response variable will be carefully chosen so that teachers will be considered as the statistical unit of analysis. The choice of a teacher as a statistical unit, how our response variable is then defined, as well as our choice of blocking variable is further explained below.
+
+\title{{\myfont The Choice of Teachers as an Analysis Unit}}
+Using teachers as a unit, rather than students, is motivated primarily by causal inference concerns and the potential implications of this study for education policy and legislation. With students as the statistical unit, causal inferences concerning class type and any direct causal effect it has on students is difficult discern using the design of this experiment. However, an analysis of the effect of class size on an instructor’s teaching ability is facilitated by this experiment. See the discussion of causal inference below for more.
+
+\title{{\myfont The Response Variable}}
+To perform this analysis using teachers a the statistical unit, we first define a measure of a teacher’s performance in math. Our measure of performance is found by taking the median mathematics score for all students under a given teacher. Each teacher was assigned to only one class type, and each student had only one teacher. Thus, this measure of a teacher’s performance is well defined. We use the median for this measure for its robustness against potential outliers and the possible skewness of the data distribution; it thus provides a more accurate reflection of a teacher’s teaching ability for a given class type.
+
+\title{{\myfont Blocking by School}}
+In project STAR, students and teachers were randomly assigned to a class type; however, this randomization was done only within each school participating in project STAR. This makes it necessary to block by school (using school ID) in our analysis, for this was part of the inherent design of project STAR. 
+
+A specialized analysis plan is required to analyze the results of completely randomized experiments (CRE) with only one observation per cell. Furthermore, within a stratified experiment (or randomized block design) one essentially conducts a CRE within each stratum, or block. Because of this, for the purpose of our analysis, we consider only those schools that have at least two classes for each class size (1,2).  
+
+# Results
+
+```{r message=FALSE, include=FALSE}
+library(AER)
+library(tidyverse)
+library(foreign)
+library(SuppDists)
+library(car)
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+library(ggplot2)
+library(tibble)
+
+# install.packages('tinytex')
+# tinytex::install_tinytex()
+# options(tinytex.verbose = TRUE)
+```
+
+```{r} 
+star = read.csv("STAR.csv")
+```
+
+```{r message=FALSE, include=FALSE}
+# aggregate by two factors
+star1 = data.frame(school = star$g1schid, teacher = star$g1tchid,
+                   class = star$g1classtype, math = star$g1tmathss)
+
+star1agg = aggregate(math ~ teacher + class + school, data = star1, FUN = median)
+```
+
+```{r}
+# keep schools with <2 per type
+tmp = aggregate(teacher ~ class + school, data = star1agg, FUN = length) # agg sample size
+
+n.table = with(tmp, tapply(teacher, list(school, class), sum)) # table
+n.table = as.data.frame(na.omit(n.table)) # remove NA
+n.table = rownames_to_column(n.table, "school")
+
+n.table$flag = 1
+
+for(i in 1:nrow(n.table)){
+  if(n.table$"REGULAR + AIDE CLASS"[i]<2) n.table$flag[i] = 0
+  else if(n.table$"REGULAR CLASS"[i]<2) n.table$flag[i] = 0
+  else if(n.table$"SMALL CLASS"[i]<2) n.table$flag[i] = 0
+}
+
+star1agg$school = as.character(star1agg$school) # equal school col type
+
+star1agg = left_join(star1agg, select(n.table, school, flag), by = "school")
+
+star1agg <- na.omit(star1agg)
+star1agg <- star1agg[!(star1agg$flag == 0), ]
+
+rownames(star1agg) <- NULL
+
+rm(n.table, tmp)
+```
+
+## Descriptive Analysis
+
+Figure 1 provides summary statistics of teaching performance grouped by class type in the form of violin plots with inset boxplots. Each plot provides a summary of the distribution of each treatment population (similar to a histogram), from which one can see relative spread, and measures of center. Furthermore, summary statistics in the form of quartiles, minimum and maximum values, and the median for each treatment population are provide by the inset boxplot.
+
+We highlight a few notable observations. First, we note it is easy to see that teachers with a smaller class size were generally performed better than those with larger classes. Furthermore, teachers in regular classes with aide performed slightly better, on average, than teachers without aide with a similar class size. We also note that there is only one outlier and that it is therefore unlikely to pose a problem for the subsequent analysis. These initial findings suggest that a more formal study of the effects of class type on teaching ability in mathematics is warranted. 
+
+```{r fig1, echo=FALSE, fig.cap="\\label{fig:fig1}Violin plot and boxplot of teaching performance by class type.", fig.height=2, fig.width=4}
+
+dodge <- position_dodge(width = 0.8)
+
+p <- ggplot(star1agg, aes(x=class,y=math)) +
+  geom_violin(position=dodge) +
+  theme(axis.text.x = element_text(size = 6), axis.text=element_text(size=9)) +
+  xlab("Class Type") + 
+  ylab("Median Math Scores")
+
+p+geom_boxplot(width=0.2, position=dodge)
+```
+
+## Two-Way Anova Model
+
+\title{{\myfont Model Description}}
+
+(1) $Y_{ijk} = \mu_{..} + \alpha_{i} + \beta_{j} + (\alpha\beta)_{ij} + \varepsilon_{ijk},$ 
+$i=1,2,3;j=1,...,16; k=1,...,n_{ij}$    
+
+where:
+
+  $Y_{ijk}$ is the median of 1st grade math score of the $k$th teacher for the $i$th Class Type in $j$th School ID;
+  
+  $\mu_{..}$ is a constant equal to the means of the total math scores;
+  
+  $\alpha_{i}$ are the main effects for the class type at the $i$th level, which are constants subject to the restriction $\sum\alpha_{i}=0$
+  
+  $\beta_{j}$ are the main effects for the School ID at the $j$th level, which are constants subject to the restriction $\sum\beta_{j}=0$
+  
+  $(\alpha\beta)_{ij}$ are the interaction effect when the Class Type is at the $i$th level and the School ID is at the $j$th level. They are constants subject to the restrictions:
+  
+  $\sum_{i}(\alpha\beta)_{ij}=0$   $i=1,2,3$
+  $\sum_{j}(\alpha\beta)_{ij}=0$   $j=1,...,16$
+  
+  $\varepsilon_{ijk}$'s are random errors, normally distributed with constant variance;
+  $n_{ij}$ is the number of observations for the $i$th Class Type in the $j$th School;
+  $n_{i}$ is the number of level in the second facror (School ID), which is 16.
+
+The number of observations at different levels (see Table 4 in the appendix) differe from each other, indicating an unbalanced design. The regular partitioning of the sum of square treatment regression (SSTR) into the sum of squares of Factor A (SSA), the sum of squares of Factor B (SSB), and the interaction (SSBA) is no longer guaranteed. We therefore fit an ANOVA model using a regression approach. The full model (1) and three reduced models (2, 3, and 4) have been constructed to study the importance of the interaction and the main effects of class type and school ID.
+
+(2) $Y_{ijk} = \mu_{..} + \alpha_{i} + \beta_{j} + \varepsilon_{ijk},$
+(3) $Y_{ijk} = \mu_{..} + \alpha_{i} + \varepsilon_{ijk},$
+(4) $Y_{ijk} = \mu_{..} + \beta_{j} + \varepsilon_{ijk},$
+
+Though interaction effects are unimportant here, we formally test whether we may exclude them. The two-way ANOVA model is set up by the full model (1) and the reduced model (2) with:
+
+null hypothesis $H_{0}:$ all $(\alpha\beta)_{ij}=0$
+
+alternative hypothesis $H_{a}:$ not all $(\alpha\beta)_{ij}=0$.
+
+The P-value of this model is as large as $0.15$, leading to the failure of rejecting the null hypothesis at $0.05$ significant level. Therefore, we can conclude that there is no interaction between class type and school ID. We therefore fit the following ANOVA  model:
+$Y_{ijk} = \mu_{..} + \alpha_{i} + \beta_{j} + \varepsilon_{ijk}$
+
+\title{{\myfont Model Fitting}}
+
+```{r}
+fm = lm(math~as.factor(class)+as.factor(school)+as.factor(class)*as.factor(school), data=star1agg)
+rm1 = lm(math~as.factor(class)+as.factor(school), data=star1agg)
+interaction = anova(rm1, fm)
+rm2 = lm(math~as.factor(class), data=star1agg)
+rm3 = lm(math~as.factor(school), data=star1agg)
+A.effect = anova(rm2, rm1)
+B.effect = anova(rm3, rm1)
+```
+
+```{r}
+anova.fit <- aov(math~as.factor(class)+as.factor(school), data=star1agg)
+sum.fit = summary(anova.fit)
+```
+
+After fitting the model, we can obtain the following:
+```{r}
+aov.table = matrix("",4,5)
+rownames(aov.table) = c("Class Type", "School ID", "Residuals", "Total")
+colnames(aov.table) = c("DF", "Sum of Squares", "Mean Squares", "F-Value", "Pr(>F)")
+
+for (i in 1:nrow(aov.table)) {aov.table[i,1] =  sum.fit[[1]]$Df[i]}
+for (i in 1:nrow(aov.table)) {aov.table[i,2] =  round(sum.fit[[1]]$`Sum Sq`[i], 2)}
+for (i in 1:nrow(aov.table)-1) {aov.table[i,3] =  round(sum.fit[[1]]$`Mean Sq`[i], 2)}
+for (i in 1:(nrow(aov.table)-2)) {aov.table[i,4] =  round(sum.fit[[1]]$`F value`[i], 2)}
+for (i in 1:(nrow(aov.table)-2)) {aov.table[i,5] =  
+  format(sum.fit[[1]]$`Pr(>F)`[i], scientific = TRUE, digits = 3)}
+
+aov.table[4,2] = round(sum.fit[[1]]$`Sum Sq`[1] + sum.fit[[1]]$`Sum Sq`[2] + sum.fit[[1]]$`Sum Sq`[3], 2)
+aov.table[4,1] = round(sum.fit[[1]]$Df[1] + sum.fit[[1]]$Df[2] + sum.fit[[1]]$Df[3], 2)
+
+aov.table %>%
+  kable(caption = "ANOVA Model Summary", longtable = T) %>%
+  kable_styling(full_width = F)
+```
+
+```{r}
+# temporary aggregation by two factor levels
+tmp = aggregate(teacher ~ class + school, data = star1agg, FUN = length)
+n.table = with(tmp, tapply(teacher, list(school, class), sum)) # table
+rm(tmp)
+# n.table %>% rowSums(.) %>% sum(.) # total sample size
+```
+
+* Number of regular classes with aide is $n_{1}=`r sum(n.table[,1])`$. Number of regular classes is $n_{2}=`r sum(n.table[,2])`$. Number of small classes is $n_{3}=`r sum(n.table[,3])`$. Total sample size is $n_{T}=`r n.table %>% rowSums(.) %>% sum(.)`$. Table 4 in the Appendix shows the full distribution of sample size of each treatment group.
+
+```{r}
+# Means
+# temporary aggregation by two factor levels
+tmp = aggregate(math ~ class + school, data = star1agg, FUN = mean)
+mean.table = with(tmp, round(tapply(math, list(class, school), sum), 2))
+rm(tmp)
+# round(mean.table %>% rowSums(.) %>% sum(.)/length(mean.table), 2)  # total sample mean
+```
+
+* The mean of regular classes with aide is $\bar{Y}_{1.}=`r mean(n.table[,1])`$. The mean of regular classes is $\bar{Y}_{2.}=`r mean(n.table[,2])`$. The mean of small classes is $\bar{Y}_{3.}=`r sum(n.table[,3])`$. Total sample mean is $\bar{Y}_{..}=`r round(mean.table %>% rowSums(.) %>% sum(.)/length(mean.table), 2)`$. Table 5 in the Appendix shows the full distribution of sample means of each treatment group.
+
+## Model Diagnostics
+
+```{r}
+alpha = 0.05
+var.df = aggregate(math~class+school, data=star1agg, FUN=var)
+# Hartley test:
+cs=as.numeric(table(star1agg$class))
+ss=as.numeric(table(star1agg$school))
+n = length(cs)*length(ss)
+H.stat=max(var.df$math)/min(var.df$math)
+flor = qmaxFratio(1-alpha,df=floor(sum(cs)/n-1),k=n)
+ceil = qmaxFratio(1-alpha,df=floor(sum(cs)/n-1),k=n)
+# Bartlett test:
+mse = (anova.fit$residuals^2)/anova.fit$df.residual
+K.stat= sum((cs)-n)*log(mse)-sum((cs-1)*log(var.df$math))
+Kstandard = qchisq(1-alpha,df=length(cs)-1)
+
+# Levene's test
+LTest = leveneTest(star1agg$math ~ star1agg$class*star1agg$school)
+```
+
+We note that model diagnostics confirm that most model assumptions have been fulfilled. As shown in Figure 2, the residuals of all the treatments are distributed around 0, indicating it is unrelated to the response variable and the groups. Additionaly, the Q-Q plot shows that the residuals are normally distributed.
+
+```{r fig2, echo=FALSE, fig.cap="\\label{fig:fig2}The residuals vs fitted values plot and residuals Q-Q plot of the ANOVA model.", fig.height=3.5}
+par(mfrow=c(1,2), oma=c(0,1,0,1), mar=c(2.5,1.5,0,1.5), pty="s")
+plot(anova.fit, which=1)
+plot(anova.fit, which=2)
+```
+
+As for the constancy of the residuals, since the number of samples in every treatment is small (Table 4 in the Appendix), some treatments have zero variance, leading to the failure of both Hartley and Bartlett's test. Therefore, Levene's test is employed at the 0.05 level of significance. With a p-value close to zero (6.135e-06, see Table 6 in the Appendix) the test suggests that the null hypothesis of constant error variance should be rejected, and that not all $(\sigma)^{2}_{ij}$s are equal. This unequal variance might be caused by the very small number of samples in each block. Sections 1.3 and 2.1 respectively address why missing values and outliers do not pose a problem for our analysis.
+
+## Inferential Analysis
+
+Due to the small sample size in each treatment cell, tranformations of the data are unlikley to resolve the issue. We use a nonparametric test, the F rank test, to determine the roubustness of our ANOVA model, and compare the pairwise mean comparisons made under our ANOVA model with those made under the rank F test. Since it is not meaningful to compare the teachers' performance between different schools, only the class type pairwise mean comparisons are carried out. 
+
+Two procedures are taken to calculate the confidence interval, namely Bonferroni and Tukey's procedures, yield multipliers of 2.44 and 2.38 respectively. Since the Tukey procedure has a smaller multiplier, indicating a narrower confidence interval (CI), it has been used for the following comparisons. Herein, the Tukey 95% CIs of the class type pairwise mean comparison of the two-way ANOVA model and the rank F test are listed in Table 2 and Table 3.
+
+```{r}
+# rank test
+star1agg$rank.math=rank(star1agg$math)
+anova.rank = aov(rank.math~as.factor(class) + as.factor(school),data=star1agg)
+```
+
+```{r}
+B.multiple_c = qt(1-alpha/(2*3), anova.fit$df.residual)
+T.multiple_c = qtukey(1-alpha, 3, anova.fit$df.residual)/sqrt(2)
+```
+
+```{r}
+alpha = 0.05
+T.ci=TukeyHSD(anova.fit, conf.level = (1-alpha))$`as.factor(class)`
+
+Ctable = matrix("",3,4)
+colnames(Ctable) = c("Diff", "Lower", "Upper", "P-value")
+rownames(Ctable) = rownames(T.ci)
+Ctable[1,] = round(c(T.ci[1,1], T.ci[1,2], T.ci[1,3], T.ci[1,4]),2)
+Ctable[2,] = round(c(T.ci[2,1], T.ci[2,2], T.ci[2,3], T.ci[2,4]),2)
+Ctable[3,] = round(c(T.ci[3,1], T.ci[3,2], T.ci[3,3], T.ci[3,4]),2)
+Ctable %>%
+  kable(caption = "Tukey 95 Percent Confidence Interval for ANOVA Model", longtable = T) %>%
+  kable_styling(full_width = F)
+```
+
+\newpage
+
+```{r}
+T.rank.ci=TukeyHSD(anova.rank,conf.level = 1-alpha)$`as.factor(class)`
+
+Rtable = matrix("",3,4)
+colnames(Rtable) = c("Diff", "Lower", "Upper", "P-value")
+rownames(Rtable) = rownames(T.rank.ci)
+Rtable[1,] = round(c(T.rank.ci[1,1], T.rank.ci[1,2], T.rank.ci[1,3], T.rank.ci[1,4]),2)
+Rtable[2,] = round(c(T.rank.ci[2,1], T.rank.ci[2,2], T.rank.ci[2,3], T.rank.ci[2,4]),2)
+Rtable[3,] = round(c(T.rank.ci[3,1], T.rank.ci[3,2], T.rank.ci[3,3], T.rank.ci[3,4]),2)
+Rtable %>%
+  kable(caption = "Tukey 95 Percent Confidence Interval for Rank F Model", longtable = T) %>%
+  kable_styling(full_width = F)
+```
+
+The mean differences between the regular class and the small class are significant in both CI sets, because the 95% CIs do not include zero. As for the comparison between the regular+aide class and the small class, and the regular+aide class and the regular class, the nonparametric CIs suggest that the differences of these means are not significant. 
+
+In sum, teachers perform better in the small class type than in the regular class type, while the difference of teachers' performances is not significant between the regular+aide and the small class types, as well as the regular+aide and regular class types. Both models obtain similar results for the effects of small classes. Thus, our ANOVA model is relatively robust against the departures from constancy of error variance.
+
+# Causal Inference
+The underlying experimental design of project STAR and fact that our analysis treats teachers as the unit of statistical interest, allows causal inference to be made. We note that the assumptions for causal inference are satisfied:
+
+Firstly, the randomization within each school employed in project STAR (for both teachers and students) ensures that the ignorability condition is satisfied. 
+Secondly, the SUTVA assumption is satisfied for the following reasons. The treatment is the same between teachers because each class size (small, regular, regular+aide) is kept at fixed levels between teachers, and each teacher is required to teach the same curriculum. There is no spillover effect because each student is only assigned one teacher, thus ensuring that a teacher’s impact on a student in one class size is not carried over to any other teacher’s classroom. Finally, if teachers taught different curriculums in different class sizes, a teacher in one class type might not be able to teach their class as effectively compared to a teacher in another class type because of the difference in curriculum between class types. However, since all teachers teach the same curriculum, and do not share students, the potential outcome of one teacher does not affect another.
+
+Thus, all assumptions necessary for causal inference on average causal effects are satisfied, and we are able to perform causal inference. We conclude that class size does have an effect on first-grade teachers’ mathematics performance; in particular, smaller class sizes allow teachers to more effectively instruct their students when compared to teachers with larger class sizes. 
+
+# Conclusions
+In this report, we investigated the effects of class type on first grade mathematics performance using teachers as the unit of statistical analysis by fitting a two-way ANOVA model for a randomized block design. Our results show that there is a significant treatment effect: teachers in smaller class sizes perform better, on average, than teachers with a regular class size. Furthermore, we determined that causal inference can be made here, and determined that smaller class sizes facilitate more effective instruction. We note that while the results of this project agree with our non-causal inferences in Project 1, namely that there is a significant difference between treatment means, treating the teacher as a unit allows causal inference to be done in this project, unlike the previous one.
+
+Future analysis of this data should include school location as a third factor. Children in different locations (eg. rural, or urban) may have different needs, and respond to differences in class size treatments differently. These differences could hold important implications for policy makers. 
+
+\newpage
+
+# References
+1. G.W. Imbens, and D.B. Rubin. 2015. Causal Inference for Statistics, Social, and Biomedical Sciences. An Introduction. Cambridge University Press.
+2. M. H. Kutner, C.J. Nachtsheim, J. Neter, and W Li. 2005. Applied Linear Statistical Models. Fifth Edition.
+
+\newpage
+
+# Appendix
+
+```{r}
+# temporary aggregation by two factor levels
+tmp = aggregate(teacher ~ class + school, data = star1agg, FUN = length)
+
+n.table = with(tmp, tapply(teacher, list(school, class), sum)) # table
+n.table = as.data.frame(n.table)
+n.table = rownames_to_column(n.table, "School ID")
+
+rm(tmp)
+
+n.table %>%
+  kable(caption = "Sample Size of Each Treatment Group", longtable = T) %>%
+  kable_styling(full_width = F)
+
+# n.table %>% rowSums(.) %>% sum(.) # total sample size
+```
+
+```{r}
+# Means
+# temporary aggregation by two factor levels
+tmp = aggregate(math ~ class + school, data = star1agg, FUN = mean)
+
+mean.table = with(tmp, round(tapply(math, list(school, class), sum), 2))
+mean.table = as.data.frame(mean.table)
+mean.table = rownames_to_column(mean.table, "School ID")
+
+rm(tmp)
+
+mean.table %>%
+  kable(caption = "Sample Mean of Each Treatment Group", longtable = T) %>%
+  kable_styling(full_width = F)
+
+# round(mean.table %>% rowSums(.) %>% sum(.)/length(mean.table), 2)  # total sample mean
+```
+
+```{r}
+ltest = as.data.frame(LTest)
+ltest = round(ltest, 2)
+ltest[is.na(ltest)] <- ""
+
+ltest %>%
+  kable(caption = "Leven's Test Results", longtable = T) %>%
+  kable_styling(full_width = F)
+```
+
+
+\newpage
+
+# Session Information
+```{r}
+sessionInfo()
+```
+

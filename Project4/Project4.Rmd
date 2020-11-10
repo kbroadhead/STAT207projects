@@ -1,0 +1,521 @@
+---
+output: 
+  pdf_document:
+    toc: TRUE
+    number_sections: TRUE
+    toc_depth: 3
+    fig_caption: TRUE
+title: "Identify Potential Deposit Subscribers of The Portuguese Retail Bank Market"
+header-includes: 
+- \usepackage{longtable}
+- \usepackage{wrapfig}
+- \usepackage{booktabs}
+- \usepackage{float}
+- \floatplacement{figure}{H}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r global_options, R.options=knitr::opts_chunk$set(warning=FALSE, message=FALSE)}
+```
+
+```{r message=FALSE, include=FALSE}
+library(tidyverse)
+
+library(lmtest) #coeftest
+library(pscl) # pR2
+library(pROC) # roc auc
+library(caret)
+library(mltools)
+
+library(kableExtra)
+library(formattable)
+library(knitr) # two table next to each other
+library(xtable) # same
+
+library(ggplot2)
+library(ggpubr)
+library(gridExtra)
+```
+
+```{r}
+bank = read.csv("bank-additional-full.csv", sep=";")
+```
+
+```{r}
+# Remove duration variable & re-lable y
+drop<-c("duration", "emp.var.rate", "loan", "default")
+bank<-bank[,!names(bank)%in%drop]
+code<-NULL
+bank$y2 <- bank$y
+for(i in 1:length(bank$y)){
+  if(bank$y[i]=="yes"){
+    code[i]<-1
+  }
+  else{code[i]<-0}
+}
+bank$y<-code
+bank$y <- factor(bank$y)
+```
+
+```{r}
+# Data Splitting 50/50 
+set.seed(1335)
+nr <- nrow(bank)
+index <- sample(1:nr, size=ceiling(length(bank$y)/2),replace=FALSE)
+bank.train<-bank[index,]
+bank.valid<-bank[-index,]
+
+rm(drop,index,nr, code, i)
+```
+
+\begin{center}
+
+\rule{16cm}{0.4pt}
+
+Team ID: 4
+
+Kenneth Broadhead
+
+Koral Buch
+
+Min Kim
+
+Nanhao Chen 
+\end{center}
+
+\newpage
+
+# Introduction
+
+## Background
+
+A Portuguese retail bank initiated a telemarketing campaign from 2008 to 2013 aiming to maximize the subscription of new clients to a long-term deposit. This campaign used a direct method of marketing through cellphone or telephone. A subset of the data, of the years 2008 to 2010, was uploaded in February 2012 to the UC Irvine Machine Learning Repository and publicly available for research purposes [1].
+
+## Statistical Objective
+
+The report focuses on the construction of a model for predicting whether or not a retail banking telemarketing campaign is successful in Portugal. In order to investigate and inform any crucial information of the dataset to the clients who are interested in this market, summary statistics using visual representations are included and explained. To predict the success or failure of telemarketing for subscription to a long-term deposit, predictive models such as logistic regression and random forests are utilized [2]. Corresponding model diagnostics and comparisons of the models’ performance are discussed.
+
+# Exploratory Analyisis
+
+Since our ultimate goal is constructing predictive models, we utilize the full data set, with all 41,188 observations, avialable at the repository. This provides us with all potentially relevant predictors, as well as enough data to split into training and validation sets. Due to the large size of the data set, we split the data (randomly) 50/50 into training and validation sets [3]. Initial exploration of the data shows there are several categorical predictors that have ‘unknown’ as a level. Since this lack of knowledge could be potentially useful to bank telemarketers, we treat these missing values as factors. 
+
+We removed the “duration” variable, since the duration of a call between a bank and client isn’t known in advance, and would be unhelpful in building a predictive model. Additionally, we removed the variables concerning personal loans ("loan") and employment variate rate ("emp.var.rate"), for they cause extreme collinearity among the predictors. Finally, we removed the variable concerning defaulting on credit ("default"), for it is extremely unbalanced (only 3 ‘yes’ values), resulting in instability in our logistic regression and random forest models.
+
+Below we provide a few summary plots of interest (Figure 1 and 2). The frequency bar charts show some interesting behavior. The job plot shows that students and retired individuals are more likely than others to subscribe to a long-term deposit. The plot of marital status shows that each class of individuals is roughly equally likely to subscribe to a long-term deposit, with single and unknown individuals appearing to have a very slightly increased chance of subscribing. 
+
+In the conditional probability plots, the relationships between the response and the predictors age, the consumer price index (CPI), and the consumer confidence index (CCI) are examined. A clear pattern is shown in the plot involving age: as the age of the client increases, so does the probability that the client subscribes to a long-term deposit. No clear patterns are seen in the CCI and CPI plots, but there are pockets of increased probability of subscription, possibly indicating more complex behavior that could be exploited for predictive purposes in conjunction with other predictors. More advanced predictive methodologies are outlined below.
+
+```{r fig1, echo = FALSE, fig.cap = "\\label{fig:fig1}Categorical Stacked Bar Plots", fig.width = 6, fig.height = 3}
+bankagg = bank %>%
+  select(job, y2) %>%
+  count(job, y2) %>%
+  group_by(job) %>%
+  mutate(per = n/sum(n)*100)
+
+p1 <- ggplot(data = bankagg, aes(x = job, y = per, fill = y2)) +
+  geom_bar(stat = "identity") +
+  labs(fill = "Deposit") +
+  xlab("Job") +
+  ylab("Percentage") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1.05, vjust = 0.5, size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8))
+
+bankagg = bank %>%
+  select(marital, y2) %>%
+  count(marital, y2) %>%
+  group_by(marital) %>%
+  mutate(per = n/sum(n)*100)
+
+p2 <- ggplot(data = bankagg, aes(x = marital, y = per, fill = y2)) +
+  geom_bar(stat = "identity") +
+  labs(fill = "Deposit") +
+  xlab("Marital Status") +
+  ylab("Percentage") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8))
+
+ggarrange(p1, p2, ncol = 2, nrow = 1,
+          common.legend = TRUE, legend="bottom")
+```
+
+```{r fig2, echo = FALSE, fig.cap = "\\label{fig:fig2}Conditional Density Plots", fig.width = 6, fig.height = 4.5}
+layout(matrix(c(1,1,2,3), 2, 2, byrow = TRUE))
+
+cdplot(y ~ age, data=bank, 
+       xlab = "Age", ylab = "Deposit",
+       main = "Age CD Plot",
+       col = c("#F8677D", "#00BFC4"))
+
+cdplot(y ~ cons.price.idx, data=bank, 
+       xlab = "Consumer Price Index", ylab = "Deposit",
+       main = "CPI CD Plot",
+       col = c("#F8677D", "#00BFC4"))
+
+cdplot(y ~ cons.conf.idx, data=bank, 
+       xlab = "Consumer Confidence Index", ylab = "Deposit",
+       main = "CCI CD Plot",
+       col = c("#F8677D", "#00BFC4"))
+```
+
+# Binary Logistic Regression Model
+
+```{r}
+# Model
+logitmodel<-glm(as.factor(y) ~ (.) - y2 + 
+                age:marital + education:cons.price.idx + 
+                I(age^2) + I(pdays^2) + I(cons.conf.idx^2) + I(euribor3m^2),
+                data=bank.train, family = binomial("logit"), 
+                control = list(maxit = 50))
+```
+
+```{r}
+# Predictive Performance
+pred.train <- predict(logitmodel, type="response")
+```
+
+```{r}
+# Validation of Predictive Performance
+pred.valid <- predict(logitmodel, newdata=bank.valid, type="response")
+```
+
+## General Model Form and Variable Selection
+
+The binary logistic regression model is:
+
+$ln(\frac{p}{1-p})=b_0+b_1x_1+b_2x_2+...+b_nx_n$
+
+Where:
+
+$Y$ is the binary response variable, $Y=1$ means the client subscribed for a deposit, and $Y=0$ means the client did not subscribe for a deposit;
+
+$p$ is the probability that $Y=1$;
+
+$b_0$ is the interception at y-axis;
+
+$x_1,...x_n$ are the predictor variables;
+
+$b_1,...b_n$ are the regression coefficients of $x_1,...x_n$, respectively.
+
+In order to improve the prediction capabilities of the model, we fit several different models until we maximized the performance, as measured by the area under the curve (AUC) of the receiver operating characteristic (ROC) curve, and the Matthews Correlation Coefficient (MCC). First, we fit a linear additive model with all 16 variables. Then, we added reasonable interaction and quadratic terms. While an exhaustive search for important second order effects was not feasible, we found that the addition of the following reasonable terms gave a model with the best prediction performance: Quadratic terms for age ("age"), the number of days that passed before a client was last contacted ("pdays"), the consumer confidence index ("cons.conf.idx"), and the Euro three-month Interbank Offered Rate ("euribor3m"). Additionally, an interaction term between age and marital status ("age"·"marital") and an interaction term between education and the consumer price index ("education"·"cons.price.idx") was found to improve model performance.
+
+## Model Assumptions
+
+The assumptions for a logistic regression model are: 
+
+* Assumption of Appropriate Outcome Structure - For the binary logistic regression, the type of the dependent variable (outcome) should be binary. In case of the dataset we analyze, we build a binary logistic regression model since we are interested in a predictive model for binary response variables (Subscription: Yes, No).
+
+* Assumption of Independent Observations - Logistic regression requires all observations to be independent of each other. 
+
+* Assumption of Absence of Multicollinearity - Logistic regression requires the independent variables to be not highly correlated with each other.
+
+* Assumption of linearity of Independent variables and Log Odds - Logistic regression requires that the independent variables are linearly related to the log odds.
+
+## Model Validation
+
+To validate our logistic regression model’s predictive capabilities, we first fit the logistic regression model to the training data set. We then use this fitted model to make predictions based on the validation data set. Below we provide summaries of the model’s performance in and out of sample performance. Table 1 and 2 show confusion matrices for the model’s performance in the training data set (table 1) and the validation set (table 2). Note the strikingly similar performance. Furthermore, Figure 5 in the Appendix shows ROC curves for the model’s performance in the training and validation data sets. Note the remarkable similarity of the two curves. The AUC for each curve is 0.7962 for the training data set, and 0.7907 for the validation set. The MCC for the training set is 0.372, while the MCC for the validation set is similar, at 0.332. The similar performances of the fitted logistic regression model in these two data sets suggests that these measures for performance accurately characterize the predictive performance of the logistic regression model. We thus fit a final logistic regression model using the full data set and proceed to model diagnostics.
+
+```{r}
+# Confusion Matrix
+conf.train = confusionMatrix(data = factor(as.numeric(pred.train>0.5)), 
+                reference = factor(bank.train$y))
+conf.valid = confusionMatrix(data = factor(as.numeric(pred.valid>0.5)),
+                reference = factor(bank.valid$y))
+
+conf.train.table = conf.train$table
+row.names(conf.train.table) = c("No", "Yes")
+colnames(conf.train.table) = c("No", "Yes")
+
+temp = conf.train.table[1,1] + conf.train.table[1,2]+conf.train.table[2,1]+conf.train.table[2,2]
+
+conf.train.table[1,1] = paste(conf.train.table[1,1], 
+                              paste0("(", round(conf.train.table[1,1]/temp*100, 1), "%)"))
+
+conf.train.table[1,2] = paste(as.numeric(conf.train.table[1,2]), paste0("(", round(as.numeric(conf.train.table[1,2])/temp*100, 1), "%)"))
+
+conf.train.table[2,1] = paste(as.numeric(conf.train.table[2,1]), paste0("(", round(as.numeric(conf.train.table[2,1])/temp*100, 1), "%)"))
+
+conf.train.table[2,2] = paste(as.numeric(conf.train.table[2,2]), paste0("(", round(as.numeric(conf.train.table[2,2])/temp*100, 1), "%)"))
+
+conf.valid.table = conf.valid$table
+row.names(conf.valid.table) = c("No", "Yes")
+colnames(conf.valid.table) = c("No", "Yes")
+
+temp = conf.valid.table[1,1] + conf.valid.table[1,2]+conf.valid.table[2,1]+conf.valid.table[2,2]
+
+conf.valid.table[1,1] = paste(conf.valid.table[1,1], 
+                              paste0("(", round(conf.valid.table[1,1]/temp*100, 1), "%)"))
+
+conf.valid.table[1,2] = paste(as.numeric(conf.valid.table[1,2]), paste0("(", round(as.numeric(conf.valid.table[1,2])/temp*100, 1), "%)"))
+
+conf.valid.table[2,1] = paste(as.numeric(conf.valid.table[2,1]), paste0("(", round(as.numeric(conf.valid.table[2,1])/temp*100, 1), "%)"))
+
+conf.valid.table[2,2] = paste(as.numeric(conf.valid.table[2,2]), paste0("(", round(as.numeric(conf.valid.table[2,2])/temp*100, 1), "%)"))
+
+kable.train = conf.train.table %>%
+  kable(caption = "Confusion Matrix For Training Set", longtable = T, format = "latex") %>%
+  kable_styling(full_width = F) %>%
+  add_header_above(c("Target", "Prediction" = 2))
+
+kable.valid = conf.valid.table %>%
+  kable(caption = "Confusion Matrix For Validaiton Set", longtable = T, format = "latex") %>%
+  kable_styling(full_width = F) %>%
+  add_header_above(c("Target", "Prediction" = 2))
+```
+
+\begin{minipage}{0.3\textwidth}
+```{r}
+kable.train
+```
+\end{minipage}
+\hspace*{9em}
+\begin{minipage}{0.3\textwidth}
+\hspace*{9em}
+```{r}
+kable.valid
+```
+\end{minipage}
+
+```{r}
+# ROC
+g.train <- roc(y ~ pred.train, data=bank.train)
+g.valid <- roc(y ~ pred.valid, data=bank.valid)
+
+# auc(g.train)
+# auc(g.valid)
+```
+
+## Model Diagnostics
+
+We note that our first assumption (Appropriate Outcome Structure) is trivially satisfied, for we have binary response data. Furthermore, observations are independent of one another, as clients were contacted individually of one another. We addressed potential problems of collinearity in chapter 3.1 above. Finally, to investigate the linear relationship of independent variables and Log Odds assumption, we examine a plot of the residuals against a plot of the linear predictor. If the overall model is correct, a Lowess smooth of the plot should approximate a horizonal with zero intercept. Figure 3 below shows such a plot, with a Lowess smooth roughly approximating a horizontal line with zero intercept. Thus, the independent variables appear roughly linearly related to the log odds. This suggests the overall appropriateness of the fitted logistic regression model.
+
+```{r fig3, echo = FALSE, fig.cap = "\\label{fig:fig3} Residual Plot", fig.width = 5, fig.height = 3}
+
+logitfinal<-glm(as.factor(y) ~ (.) - y2 + 
+                age:marital + education:cons.price.idx + 
+                I(age^2) + I(pdays^2) + I(cons.conf.idx^2) + I(euribor3m^2),
+                data=bank, family = binomial("logit"), 
+                control = list(maxit = 50))
+plot(logitfinal, which=1)
+```
+
+# Random Forest (RF) Model
+
+```{r}
+n_no = length(bank$y2[bank$y2=='no'])
+n_yes = length(bank$y2[bank$y2=='yes'])
+yes_ratio = n_yes / (n_no + n_yes)
+no_ratio = n_no / (n_no + n_yes)
+# model setup
+rf1 = rminer::fit(y2~(.)-y+age:marital+education:cons.price.idx+I(age^2)+I(pdays^2)+I(cons.conf.idx^2)+I(euribor3m^2), data=bank.train, model='randomForest', classwt=c('no'=yes_ratio ,'yes'=no_ratio))
+```
+
+## General Model Form and Variable selection
+
+To obtain a better prediction model, the random forest method was applied to train the model (RF Model). The random forests model is constructed by an ensemble of classification or regression decision trees. The model uses the random feature selection in the tree induction process and makes the prediction by cumulating the predictions of the branches. In general, the random forests model is fast to calculate, comparing to the other complex machine learning algorithms, and is as good as the best supervised learning algorithms. At the same time, the random feature selection in the random forests model makes this model less possible to overfit the data. Although the depth of the random forests method results in the difficulty of the data interpretation, this method can give us a good model with relatively low cost. Herein, the random forests model is constructed based on the same variable options as the logistic regression model used above in order to compare their performance.
+
+## Model Assumptions
+
+The random forests method usually requires the balanced dataset, because the unbalanced dataset makes this method bias to the same direction. Since the response variable in our dataset is completely unbalanced, the class weight is used to re-balance this variable. Herein, the ‘NO’ and ‘YES’ classes are weighted inversely proportional to how frequently they appear in the dataset.
+
+## Model Validation
+
+```{r}
+# Confusion Matrix
+pred_train <- rminer::predict(rf1, bank.train)
+pred_valid <- rminer::predict(rf1, bank.valid)
+conf_train = caret::confusionMatrix(factor(as.numeric(pred_train[,2]>0.5)), bank.train$y)
+conf_valid = caret::confusionMatrix(factor(as.numeric(pred_valid[,2]>0.5)), bank.valid$y)
+
+
+conf_train.table = conf_train$table
+row.names(conf_train.table) = c("No", "Yes")
+colnames(conf_train.table) = c("No", "Yes")
+
+temp = conf_train.table[1,1] + conf_train.table[1,2]+conf_train.table[2,1]+conf_train.table[2,2]
+
+conf_train.table[1,1] = paste(conf_train.table[1,1], 
+                              paste0("(", round(conf_train.table[1,1]/temp*100, 1), "%)"))
+
+conf_train.table[1,2] = paste(as.numeric(conf_train.table[1,2]), paste0("(", round(as.numeric(conf_train.table[1,2])/temp*100, 1), "%)"))
+
+conf_train.table[2,1] = paste(as.numeric(conf_train.table[2,1]), paste0("(", round(as.numeric(conf_train.table[2,1])/temp*100, 1), "%)"))
+
+conf_train.table[2,2] = paste(as.numeric(conf_train.table[2,2]), paste0("(", round(as.numeric(conf_train.table[2,2])/temp*100, 1), "%)"))
+
+conf_valid.table = conf.valid$table
+row.names(conf_valid.table) = c("No", "Yes")
+colnames(conf_valid.table) = c("No", "Yes")
+
+temp = conf_valid.table[1,1] + conf_valid.table[1,2]+conf_valid.table[2,1]+conf_valid.table[2,2]
+
+conf_valid.table[1,1] = paste(conf_valid.table[1,1], 
+                              paste0("(", round(conf_valid.table[1,1]/temp*100, 1), "%)"))
+
+conf_valid.table[1,2] = paste(as.numeric(conf_valid.table[1,2]), paste0("(", round(as.numeric(conf_valid.table[1,2])/temp*100, 1), "%)"))
+
+conf_valid.table[2,1] = paste(as.numeric(conf_valid.table[2,1]), paste0("(", round(as.numeric(conf_valid.table[2,1])/temp*100, 1), "%)"))
+
+conf_valid.table[2,2] = paste(as.numeric(conf_valid.table[2,2]), paste0("(", round(as.numeric(conf_valid.table[2,2])/temp*100, 1), "%)"))
+
+kable.train = conf_train.table %>%
+  kable(caption = "Confusion Matrix For Training Set", longtable = T, format = "latex") %>%
+  kable_styling(full_width = F) %>%
+  add_header_above(c("Target", "Prediction" = 2))
+
+kable.valid = conf_valid.table %>%
+  kable(caption = "Confusion Matrix For Validaiton Set", longtable = T, format = "latex") %>%
+  kable_styling(full_width = F) %>%
+  add_header_above(c("Target", "Prediction" = 2))
+```
+
+\begin{minipage}{0.3\textwidth}
+```{r}
+kable.train
+```
+\end{minipage}
+\hspace*{9em}
+\begin{minipage}{0.3\textwidth}
+\hspace*{9em}
+```{r}
+kable.valid
+```
+\end{minipage}
+
+```{r}
+# ROC
+roc_train<-roc(y2~pred_train[,2],data=bank.train)
+roc_valid<-roc(y2~pred_valid[,2],data=bank.valid)
+```
+
+```{r} 
+lr_mcc_train = mcc(factor(as.numeric(pred.train>0.5)), factor(bank.train$y))
+mcc_train = mcc(factor(as.numeric(pred_train[,2]>0.5)), bank.train$y)
+
+#roc_valid<-roc(y2~pred_valid[,2],data=bank.valid)
+#auc_valid = auc(roc_valid)
+
+lr_mcc_valid = mcc(factor(as.numeric(pred.valid>0.5)), factor(bank.valid$y))
+mcc_valid = mcc(factor(as.numeric(pred_valid[,2]>0.5)), bank.valid$y)
+
+# importance of variables
+rf1.varimp = rminer::Importance(rf1, bank.train, method='SA')
+#print(round(rf1.varimp$imp, digits=2))
+```
+
+Similarly, the confusion matrix of the RF Model was built in Table 3 and 4. The RF Model has a good performance on the training dataset with the AUC value as high as 0.998. Given to the prediction ability, the AUC value of the validation set is about 0.74, which is a little smaller than that of the training set (ROC curve in Figure 6 in the Appendix). Besides, the MCC values for the training set and validation set are 0.92 and 0.31 respectively. This difference between the training set in the RF Model may be caused by the unbalance of the dataset even though the re-weighted parameters have been considered when setup the model.
+
+According to the importance variable analysis, the way to contact the clients (‘contact’ variable) plays an important role (11%) in the RF Model. Based on the whole dataset, the people contacted by cellular have more chance to subscribe a term deposit than those contacted by telephone. Besides, the ‘euribor3m’ (11%), describing the Euribor 3-month rate, and the ‘age’ of the clients (13%) are another two important variables in the dataset. It is reasonable that the investment behavior is associated with the loan interest rate as well as the age of the clients. The low loan interest rate (or even negative) will encourage the clients to do the investment, and at the time, older people probably tend to have more money to purchase the financial product. There are other important variables, such as the number of contacts to the client (‘campaign’, 8%), and the 'education' (10%). 
+
+# Model Comparison
+
+As noted above, the logistic regression model performed similarly in and out of sample. Thus, the final logistic regression model (fit using all data) measures of performance (MCC, ROC, AUC) likely provide an accurate measure of its predictive performance. However, the random forest model showed some notable discrepancies in performance. The measures of predictive accuracy for obtained using the validation set are therefore more accurate measures of its overall predictive performance. We therefore compare the performance of the final logistic model to the performance of the random forest on its validation data set.
+
+The final logistic regression model had a MCC of 0.347, while the random forest had a MCC of roughly 0.31. Additionally, the final logistic model had an AUC value of 0.795, while the random forest had an AUC value of roughly 0.74. This difference is further highlighted by the joint ROC curves plotted blow in Figure 4. This discrepancy between the to models appear to be caused by overfitting on part of the random forest model. The training and validation sets support this conclusion, as one would expect predictive performance to be vastly superior in the training data versus the validation data when a model suffers from overfitting. 
+
+```{r}
+# Full Logit model
+logit.full <- glm(as.factor(y) ~ (.) - y2 + 
+                age:marital + education:cons.price.idx + 
+                I(age^2) + I(pdays^2) + I(cons.conf.idx^2) + I(euribor3m^2),
+                data=bank, family = binomial("logit"), 
+                control = list(maxit = 50))
+```
+
+```{r}
+# Predictive Performance
+logit.pred <- predict(logit.full, type="response")
+```
+
+```{r}
+
+logit.roc <- roc(y ~ logit.pred, data=bank)
+rf.roc   <-roc(y2~pred_valid[,2],data=bank.valid)
+```
+
+```{r fig4, echo = FALSE, fig.cap = "\\label{fig:fig4}ROC Plot Logistic Regression Model and Random Forest Model", fig.width = 3.5, fig.height = 3.5}
+par(pty="s")
+plot(logit.roc, col = "#F8677D", xlim = rev(c(0,1)),)
+lines(rf.roc, col = "#00BFC4")
+legend("bottomright",
+  legend = c("Logit Model", "RF Model"),
+  col = c("#F8677D", "#00BFC4"),
+  bty = "n", # no frame
+  lty = 1:1, # type of line
+  cex=0.6)
+```
+
+# Conclusions, Limitations, and Future Research
+
+In conclusion, while the random forest model performed very well in sample, the logistic regression model had slightly better out of sample performance across all measures. Thus, we think the logistic model a superior model for predictive performance, and recommend its use over the random forest model.
+
+\newpage
+
+# References
+
+1. Center for Machine Learning and Intelligent Systems: UCI Machine Learning Repository, Bank Marketing Data Set. 
+https://archive.ics.uci.edu/ml/datasets/Bank+Marketing.
+
+2. S. Moro, P. Cortez and P. Rita., 2014. A Data-Driven Approach to Predict the Success of Bank Telemarketing. Decision Support Systems, Elsevier, 62:22-31.
+
+3. Kutner, M.H., 2005. Applied Linear Statistical Models, 5th.
+
+\newpage
+
+# Appendix
+
+```{r fig5, echo = FALSE, fig.cap = "\\label{fig:fig5}ROC Plot For Training and Validation Datasets of Logistic Regression Model", fig.width = 3.5, fig.height = 3.5}
+par(pty="s")
+plot(g.train, col = "#F8677D", xlim = rev(c(0,1)),)
+lines(g.valid, col = "#00BFC4")
+legend("bottomright",
+  legend = c("Train Set", "Valid Set"),
+  col = c("#F8677D", "#00BFC4"),
+  bty = "n", # no frame
+  lty = 1:1, # type of line
+  cex=0.6)
+```
+
+```{r fig6, echo = FALSE, fig.cap = "\\label{fig:fig6}ROC Plot For Training and Validation Datasets of Random Forest Model", fig.width = 3.5, fig.height = 3.5}
+par(pty="s")
+plot(roc_train, col = "#F8677D", xlim = rev(c(0,1)),)
+lines(roc_valid, col = "#00BFC4")
+legend("bottomright",
+  legend = c("Train Set", "Valid Set"),
+  col = c("#F8677D", "#00BFC4"),
+  bty = "n", # no frame
+  lty = 1:1, # type of line
+  cex=0.6)
+```
+
+```{r}
+impdf = matrix("", 16, 2)
+impdf[, 2] = round(rf1.varimp$imp[1:16]*100, 3)
+impdf[, 1] = colnames(bank[1:16])
+
+impdf = as.data.frame(impdf)
+colnames(impdf) = c("job", "imp")
+
+impdf$job = as.character(impdf$job)
+impdf$imp <- as.numeric(as.character(impdf$imp))
+
+impdf = impdf[order(impdf$imp, decreasing = TRUE),]
+```
+
+```{r fig7, echo = FALSE, fig.cap = "\\label{fig:fig7}Plot of Random Forests Model Variable Importance", fig.width = 5, fig.height = 4}
+barplot(impdf[,2],
+main = "Random Forests Model Variable Importance Plot",
+xlab = "",
+ylab = "Percentage",
+names.arg = impdf[,1],
+col = "#F8677D",
+#horiz = TRUE,
+las=2)
+```
+
